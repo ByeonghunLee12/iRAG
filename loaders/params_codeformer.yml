@@ -1,0 +1,17 @@
+blur_kernel_size: 41
+use_motion_kernel: false
+motion_kernel_prob: 0.001
+kernel_list: ['iso', 'aniso']
+kernel_prob: [0.5, 0.5]
+
+# large degradation in stageII
+blur_sigma_large: [1, 15]
+downsample_range_large: [4, 30]
+noise_range_large: [0, 20] # 0-20
+jpeg_range_large: [30, 80] #30-80
+
+# small degradation in stageIII
+blur_sigma: [0.1, 10]
+downsample_range: [1, 12]
+noise_range: [0, 10] # 0-10
+jpeg_range: [60, 100]
