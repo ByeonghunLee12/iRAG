@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.ipynb_checkpoints/
+
+# checkpoints / weights
+*.ckpt
+*.pt
+*.pth
+pretrained/
+
+# run artifacts
+logs/
+outputs/
+wandb/
+*.log

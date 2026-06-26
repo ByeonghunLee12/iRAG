@@ -1,0 +1,225 @@
+# iRAG config: TTSR + diffusion SR end-to-end (paper Eq. 7).
+# Derived from the base text-conditional SD 2.1 config.
+# Key deltas:
+#   - model.target -> LatentDiffusionSRiRAG (subclass)
+#   - structcond_stage_config.params.use_ref_branch: true
+#   - unet_config.params.semb_channels: 512  (2x because encoder concats ref)
+#   - data: IRAGPairedDataset(mode='online') with on-disk (gt, lr, sr_bicubic, ref)
+#   - batch_size: 1 + accumulate_grad_batches: 8  (TTSR attention is O(N^2)
+#     in spatial size; at HR=512 the per-sample bmm matrix is ~1 GB)
+#
+# Usage:
+#   python train.py --train \
+#     --base configs/irag.yaml \
+#     --gpus GPU_ID, --name irag --scale_lr False
+
+sf: 4
+
+model:
+  base_learning_rate: 5.0e-05
+  target: ldm.models.diffusion.ddpm.LatentDiffusionSRiRAG
+  params:
+    # ---- iRAG-specific ----
+    ckpt_path: pretrained/irag.ckpt   # merged ckpt = trained diffusion + TTSR restoration
+    use_restoration: true
+    inter_loss_weight: 1.0     # alpha in Eq. (7); applied to L_final
+    ref_key: ref
+    inter_key: inter           # unused in online mode but harmless to leave set
+    restoration_module_config:
+      target: ldm.modules.restoration.ttsr.TTSR
+      params:
+        scale: 4
+        num_res_blocks: [16, 16, 8, 4]
+        n_feats: 64
+        res_scale: 1.0
+    # Optional: warm-start TTSR from a standalone pretrained TTSR checkpoint
+    # (e.g. a BSR-pretrained TTSR run). Keys are
+    # remapped (strip `module.`, load into restoration_module.core, strict=False
+    # so LTE_copy may be absent). Loaded AFTER the base ckpt so it is
+    # never clobbered.
+    # restoration_module_ckpt: PATH/TO/restoration_module.pt
+
+    # ---- inherited from LatentDiffusionSRTextWT ----
+    linear_start: 0.00085
+    linear_end: 0.0120
+    num_timesteps_cond: 1
+    log_every_t: 200
+    timesteps: 1000
+    first_stage_key: image
+    cond_stage_key: caption
+    image_size: 512
+    channels: 4
+    cond_stage_trainable: False
+    conditioning_key: crossattn
+    monitor: val/loss_simple_ema
+    scale_factor: 0.18215
+    use_ema: False
+    unfrozen_diff: False
+    random_size: False
+    time_replace: 1000
+    use_usm: True
+    p2_gamma: ~
+    p2_k: ~
+
+    unet_config:
+      target: ldm.modules.diffusionmodules.openaimodel.UNetModelDualcondV2
+      params:
+        image_size: 32 # unused
+        in_channels: 4
+        out_channels: 4
+        model_channels: 320
+        attention_resolutions: [4, 2, 1]
+        num_res_blocks: 2
+        channel_mult: [1, 2, 4, 4]
+        num_head_channels: 64
+        use_spatial_transformer: True
+        use_linear_in_transformer: True
+        transformer_depth: 1
+        context_dim: 1024
+        use_checkpoint: False
+        legacy: False
+        # SPADE label_nc is 2x the encoder per-branch output, because the
+        # iRAG encoder channel-concats eps_phi(z_LR) and eps_phi(z_inter).
+        # encoder out_channels (below) is 256 -> semb_channels = 512.
+        semb_channels: 512
+
+    first_stage_config:
+      target: ldm.models.autoencoder.AutoencoderKL
+      params:
+        embed_dim: 4
+        monitor: val/rec_loss
+        ddconfig:
+          double_z: true
+          z_channels: 4
+          resolution: 512
+          in_channels: 3
+          out_ch: 3
+          ch: 128
+          ch_mult: [1, 2, 4, 4]
+          num_res_blocks: 2
+          attn_resolutions: []
+          dropout: 0.0
+        lossconfig:
+          target: torch.nn.Identity
+
+    cond_stage_config:
+      target: ldm.modules.encoders.modules.FrozenOpenCLIPEmbedder
+      params:
+        freeze: True
+        layer: "penultimate"
+
+    structcond_stage_config:
+      target: ldm.modules.diffusionmodules.openaimodel.EncoderUNetModelWT
+      params:
+        # iRAG: ref branch runs the same backbone over (z_LR, z_inter) and
+        # channel-concats per scale. out_channels stays 256 per branch;
+        # the resulting dict carries 512 channels per scale.
+        use_ref_branch: true
+        image_size: 96
+        in_channels: 4
+        model_channels: 256
+        out_channels: 256
+        num_res_blocks: 2
+        attention_resolutions: [4, 2, 1]
+        dropout: 0
+        channel_mult: [1, 1, 2, 2]
+        conv_resample: True
+        dims: 2
+        use_checkpoint: False
+        use_fp16: False
+        num_heads: 4
+        num_head_channels: -1
+        num_heads_upsample: -1
+        use_scale_shift_norm: False
+        resblock_updown: False
+        use_new_attention_order: False
+
+
+# Kept for backwards compatibility with parent's __init__ (reads
+# self.configs.degradation in code paths we don't exercise). The iRAG
+# get_input override never runs the Real-ESRGAN degradation, so the values
+# below are effectively ignored.
+degradation:
+  resize_prob: [0.2, 0.7, 0.1]
+  resize_range: [0.3, 1.5]
+  gaussian_noise_prob: 0.5
+  noise_range: [1, 15]
+  poisson_scale_range: [0.05, 2.0]
+  gray_noise_prob: 0.4
+  jpeg_range: [60, 95]
+  second_blur_prob: 0.5
+  resize_prob2: [0.3, 0.4, 0.3]
+  resize_range2: [0.6, 1.2]
+  gaussian_noise_prob2: 0.5
+  noise_range2: [1, 12]
+  poisson_scale_range2: [0.05, 1.0]
+  gray_noise_prob2: 0.4
+  jpeg_range2: [60, 100]
+  gt_size: 512
+  no_degradation_prob: 0.01
+
+
+data:
+  target: train.DataModuleFromConfig
+  params:
+    batch_size: 1            # TTSR attention is O(spatial^4); B=1 at HR=512
+    num_workers: 4
+    wrap: false
+    train:
+      target: ldm.data.irag_datasets.IRAGPairedDataset
+      params:
+        root_path: PATH/TO/train_data     # TODO: set
+        mode: online
+        gt_size: 512
+        scale: 4
+        use_hflip: True
+        use_rot: False
+        phase: train
+    validation:
+      target: ldm.data.irag_datasets.IRAGPairedDataset
+      params:
+        root_path: PATH/TO/val_data       # TODO: set
+        mode: online
+        gt_size: 512
+        scale: 4
+        use_hflip: False
+        use_rot: False
+        phase: val
+
+
+test_data:
+  target: train.DataModuleFromConfig
+  params:
+    batch_size: 1
+    num_workers: 4
+    wrap: false
+    test:
+      target: ldm.data.irag_datasets.IRAGPairedDataset
+      params:
+        root_path: PATH/TO/test_data      # TODO: set
+        mode: online
+        gt_size: 512
+        scale: 4
+        use_hflip: False
+        use_rot: False
+        phase: test
+
+
+lightning:
+  modelcheckpoint:
+    params:
+      every_n_train_steps: 1500
+  callbacks:
+    image_logger:
+      target: train.ImageLogger
+      params:
+        batch_frequency: 1500
+        max_images: 4
+        increase_log_steps: False
+
+  trainer:
+    benchmark: True
+    max_steps: 800000
+    # Effective batch ≈ batch_size * accumulate_grad_batches.
+    # Original config was B=6 * accum=4 = 24. iRAG is B=1 so accum=24.
+    accumulate_grad_batches: 24
