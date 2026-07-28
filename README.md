@@ -2,9 +2,9 @@
 ## Reference-based Super-Resolution via Image-based Retrieval-Augmented Generation Diffusion (2025 ICCV)
 
 <p align="center">
-  <a href="https://openaccess.thecvf.com/content/ICCV2025/papers/Lee_Reference-based_Super-Resolution_via_Image-based_Retrieval-Augmented_Generation_Diffusion_ICCV_2025_paper.pdf"><img src="https://img.shields.io/badge/📄_PDF-Download-blue"></a>
-  <a href="https://byeonghunlee12.github.io/iRAG_page/"><img src="https://img.shields.io/badge/Project%20Page-online-brightgreen"></a>  
-  <a href="https://github.com/ByeonghunLee12/iRAG"><img src="https://img.shields.io/github/stars/ByeonghunLee12/iRAG?style=social" alt="GitHub stars" /></a>  
+  <a href="https://openaccess.thecvf.com/content/ICCV2025/papers/Lee_Reference-based_Super-Resolution_via_Image-based_Retrieval-Augmented_Generation_Diffusion_ICCV_2025_paper.pdf"><img src="https://img.shields.io/badge/📄_PDF-Download-blue">
+  <a href="https://byeonghunlee12.github.io/iRAG_page/"><img src="https://img.shields.io/badge/Project%20Page-online-brightgreen"> 
+  <a href="https://github.com/ByeonghunLee12/iRAG"><img src="https://img.shields.io/github/stars/ByeonghunLee12/iRAG?style=social" alt="GitHub stars" />
   <br>
 </p>
 
